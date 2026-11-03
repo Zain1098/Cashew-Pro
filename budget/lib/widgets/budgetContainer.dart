@@ -17,6 +17,7 @@ import 'package:budget/widgets/openPopup.dart';
 import 'package:budget/widgets/tappable.dart';
 import 'package:budget/widgets/textWidgets.dart';
 import 'package:budget/widgets/util/widgetSize.dart';
+import 'package:budget/widgets/util/shimmerPlaceholder.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -332,7 +333,7 @@ class BudgetContainer extends StatelessWidget {
             ),
           );
         } else {
-          return Container(height: height, width: double.infinity);
+          return ShimmerPlaceholder(height: height ?? 165, borderRadius: 20);
         }
       },
     );
@@ -486,17 +487,14 @@ String getAmountPerDayString(
           : false;
 
   if (isOverBudget) {
-    return convertToMoney(
-            Provider.of<AllWallets>(context),
-            !appStateSettings["showTotalSpentForBudget"]
-                ? totalAmount
-                : totalAmount - budgetAmount) +
-        (appStateSettings["showTotalSpentForBudget"]
-            ? (" " + "over".tr() + " ")
-            : " / ") +
-        convertToMoney(Provider.of<AllWallets>(context), budgetAmount) +
+    double overAmt = (totalAmount - budgetAmount).abs();
+    return convertToMoney(Provider.of<AllWallets>(context), overAmt) +
         " " +
-        remainingDaysString;
+        "over-budget".tr() +
+        " · " +
+        remainingDays.toString() +
+        " " +
+        (remainingDays == 1 ? "day-left".tr() : "days-left".tr());
   }
 
   return (amountPerDay < 0

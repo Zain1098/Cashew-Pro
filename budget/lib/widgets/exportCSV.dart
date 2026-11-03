@@ -3,6 +3,7 @@ import 'package:budget/functions.dart';
 import 'package:budget/pages/addBudgetPage.dart';
 import 'package:budget/struct/databaseGlobal.dart';
 import 'package:budget/struct/settings.dart';
+import 'package:budget/struct/transferHelpers.dart';
 import 'package:budget/widgets/globalSnackbar.dart';
 import 'package:budget/widgets/openBottomSheet.dart';
 import 'package:budget/widgets/openPopup.dart';
@@ -110,13 +111,16 @@ class ExportCSV extends StatelessWidget {
           "account": (transactionWithCategory) =>
               transactionWithCategory.wallet?.name ?? "",
           "amount": (transactionWithCategory) =>
-              transactionWithCategory.transaction.amount.toString(),
+              transactionWithCategory.transaction.amount.toStringAsFixed(2),
           "currency": (transactionWithCategory) =>
-              (transactionWithCategory.wallet?.currency ?? "").allCaps,
+              (transactionWithCategory.wallet?.currency ?? "").toUpperCase() == "PKR"
+                  ? "Rs"
+                  : (transactionWithCategory.wallet?.currency ?? "").allCaps,
           "title": (transactionWithCategory) =>
               transactionWithCategory.transaction.name,
           "note": (transactionWithCategory) =>
-              transactionWithCategory.transaction.note,
+              transactionWithCategory.transaction.note
+                  .replaceAll("\u20A8", "Rs"),
           "date": (transactionWithCategory) =>
               transactionWithCategory.transaction.dateCreated.toString(),
           "income": (transactionWithCategory) =>
@@ -124,7 +128,9 @@ class ExportCSV extends StatelessWidget {
           "type": (transactionWithCategory) =>
               transactionWithCategory.transaction.type.toString(),
           "category name": (transactionWithCategory) =>
-              transactionWithCategory.category.name,
+              transactionWithCategory.transaction.categoryFk == "0"
+                  ? specialCategoryName(transactionWithCategory.transaction)
+                  : transactionWithCategory.category.name,
           "subcategory name": (transactionWithCategory) =>
               transactionWithCategory.subCategory?.name ?? "",
           "color": (transactionWithCategory) =>
@@ -148,29 +154,11 @@ class ExportCSV extends StatelessWidget {
       csvData.add(output.first.keys.toList()); // Add first row headers
       csvData.addAll(output.map((map) => map.values.toList()));
       // print(csvData);
-      String csv = ListToCsvConverter().convert(csvData);
+      // Prepend UTF-8 BOM so Excel opens Urdu and special characters correctly
+      String csv = "﻿" + ListToCsvConverter().convert(csvData);
 
-      String fileName;
-      if (dateTimeRange != null) {
-        fileName = "cashew-" +
-            (DateTime.now().millisecondsSinceEpoch).toString() +
-            "-" +
-            dateTimeRange.start.year.toString() +
-            "-" +
-            dateTimeRange.start.month.toString() +
-            "-" +
-            dateTimeRange.start.day.toString() +
-            "-to-" +
-            dateTimeRange.end.year.toString() +
-            "-" +
-            dateTimeRange.end.month.toString() +
-            "-" +
-            dateTimeRange.end.day.toString() +
-            ".csv";
-      } else {
-        fileName =
-            "cashew-" + cleanFileNameString(DateTime.now().toString()) + ".csv";
-      }
+      String dateStr = DateFormat("yyyy-MM-dd").format(dateTimeRange?.start ?? DateTime.now());
+      String fileName = "cashew-transactions-$dateStr.csv";
 
       await saveCSV(boxContext: boxContext, csv: csv, fileName: fileName);
     });
@@ -283,10 +271,12 @@ class _ExportCSVPopupState extends State<ExportCSVPopup> {
                       ? Icons.date_range_outlined
                       : Icons.date_range_rounded,
                   onTap: () async {
+                    final BuildContext boxContext = widget.boxContext;
+                    final List<String>? wallets = selectedWallets;
                     popRoute(context);
                     DateTimeRangeOrAllTime? dateRange =
                         await showCustomDateRangePicker(
-                      context,
+                      boxContext,
                       null,
                       initialEntryMode: DatePickerEntryMode.calendarOnly,
                       allTimeButton: false,
@@ -302,9 +292,9 @@ class _ExportCSVPopupState extends State<ExportCSVPopup> {
                       );
                     } else {
                       await widget.exportCSV(
-                        boxContext: widget.boxContext,
+                        boxContext: boxContext,
                         dateTimeRange: dateRange.dateTimeRange,
-                        selectedWalletPks: selectedWallets,
+                        selectedWalletPks: wallets,
                       );
                     }
                   },

@@ -8,6 +8,7 @@ import 'package:budget/struct/settings.dart';
 import 'package:budget/widgets/framework/popupFramework.dart';
 import 'package:budget/widgets/util/keepAliveClientMixin.dart';
 import 'package:budget/widgets/budgetContainer.dart';
+import 'package:budget/widgets/util/shimmerPlaceholder.dart';
 import 'package:budget/widgets/openBottomSheet.dart';
 import 'package:budget/widgets/openPopup.dart';
 import 'package:budget/widgets/selectItems.dart';
@@ -163,7 +164,11 @@ class _HomePageBudgetsState extends State<HomePageBudgets> {
               ],
             );
           } else {
-            return SizedBox.shrink();
+            return const ShimmerPlaceholder(
+              height: 165,
+              borderRadius: 20,
+              margin: EdgeInsetsDirectional.only(start: 13, end: 13, bottom: 13),
+            );
           }
         },
       ),

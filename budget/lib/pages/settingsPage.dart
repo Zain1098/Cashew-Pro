@@ -1,3 +1,4 @@
+import 'package:budget/widgets/exportPDF.dart';
 import 'package:budget/colors.dart';
 import 'package:budget/database/tables.dart' hide AppSettings;
 import 'package:budget/pages/aboutPage.dart';
@@ -13,7 +14,9 @@ import 'package:budget/pages/premiumPage.dart';
 import 'package:budget/pages/transactionsListPage.dart';
 import 'package:budget/pages/upcomingOverdueTransactionsPage.dart';
 import 'package:budget/struct/currencyFunctions.dart';
+import 'package:budget/struct/databaseGlobal.dart';
 import 'package:budget/struct/defaultPreferences.dart';
+import 'package:budget/struct/headlessBackup.dart';
 import 'package:budget/struct/languageMap.dart';
 import 'package:budget/struct/navBarIconsData.dart';
 import 'package:budget/widgets/animatedExpanded.dart';
@@ -36,6 +39,8 @@ import 'package:budget/widgets/notificationsSettings.dart';
 import 'package:budget/widgets/openBottomSheet.dart';
 import 'package:budget/widgets/framework/pageFramework.dart';
 import 'package:budget/widgets/openPopup.dart';
+import 'package:budget/widgets/openSnackbar.dart';
+import 'package:budget/widgets/globalSnackbar.dart';
 import 'package:budget/widgets/radioItems.dart';
 import 'package:budget/widgets/ratingPopup.dart';
 import 'package:budget/widgets/restartApp.dart';
@@ -116,7 +121,7 @@ class MoreActionsPageState extends State<MoreActionsPage> {
         listWidgets: [
           Padding(
             padding: const EdgeInsetsDirectional.only(bottom: 8.0),
-            child: PremiumBanner(),
+            child: SizedBox.shrink(),
           ),
           MorePages()
         ],
@@ -610,9 +615,13 @@ class SettingsPageContent extends StatelessWidget {
 
         ExportCSV(),
 
+        ExportPDF(),
+
         ImportCSV(),
 
         SettingsHeader(title: "backups".tr()),
+
+        BackupsQuickSummary(),
 
         ExportDB(),
 
@@ -1818,4 +1827,144 @@ List<String> getWeekdayNames() {
   }
 
   return localizedWeekdayNames;
+}
+
+
+class BackupsQuickSummary extends StatefulWidget {
+  const BackupsQuickSummary({super.key});
+
+  @override
+  State<BackupsQuickSummary> createState() => _BackupsQuickSummaryState();
+}
+
+class _BackupsQuickSummaryState extends State<BackupsQuickSummary> {
+  bool backingUp = false;
+
+  @override
+  void initState() {
+    super.initState();
+    sharedPreferences.reload().then((_) {
+      if (mounted) setState(() {});
+    }).catchError((_) {});
+  }
+
+  String getLastBackupDisplay() {
+    final String? last =
+        sharedPreferences.getString(kLastSuccessfulDriveBackupKey);
+    if (last == null || last.isEmpty) return "Never";
+    try {
+      final DateTime dt = DateTime.parse(last).toLocal();
+      return DateFormat("d MMM yyyy, h:mm a").format(dt);
+    } catch (_) {
+      return last;
+    }
+  }
+
+  String? getLastBackupError() {
+    final String? err = sharedPreferences.getString(kLastBackupErrorKey);
+    if (err == null || err.trim().isEmpty) return null;
+    return err.trim();
+  }
+
+  Future<void> _handleBackupNowTap() async {
+    if (backingUp) return;
+    if (googleUser == null) {
+      final bool signedIn = await signInAndSync(
+        context,
+        next: () {},
+        showErrorPopup: true,
+      );
+      if (!signedIn || googleUser == null) {
+        if (mounted) setState(() {});
+        return;
+      }
+    }
+    setState(() => backingUp = true);
+    await createBackup(context, deleteOldBackups: true);
+    await sharedPreferences.reload();
+    if (mounted) setState(() => backingUp = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasSignedIn = appStateSettings["hasSignedIn"] == true;
+    final String? lastErr = getLastBackupError();
+    return Column(
+      children: [
+        SettingsContainer(
+          icon: lastErr != null
+              ? (appStateSettings["outlinedIcons"]
+                  ? Icons.cloud_off_outlined
+                  : Icons.cloud_off_rounded)
+              : (appStateSettings["outlinedIcons"]
+                  ? Icons.cloud_done_outlined
+                  : Icons.cloud_done_rounded),
+          title: "Last Backup: " + getLastBackupDisplay(),
+          description: lastErr != null
+              ? "Last attempt failed: $lastErr — tap to retry"
+              : "Tap to back up now to Google Drive",
+          afterWidget: backingUp
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : null,
+          onTap: _handleBackupNowTap,
+          onLongPress: () async {
+            if (!hasSignedIn) {
+              openSnackbar(SnackbarMessage(
+                title: "Sign in required",
+                description:
+                    "Sign in to Google Drive first to queue a background backup.",
+                icon: Icons.info_outline_rounded,
+              ));
+              return;
+            }
+            await triggerImmediateHeadlessBackupOneOff();
+            openSnackbar(SnackbarMessage(
+              title: "Background backup queued",
+              description:
+                  "WorkManager one-off Google Drive backup task scheduled.",
+              icon: Icons.cloud_upload_rounded,
+            ));
+          },
+        ),
+        Opacity(
+          opacity: hasSignedIn ? 1.0 : 0.55,
+          child: SettingsContainerSwitch(
+            key: ValueKey("daily-backup-switch-$hasSignedIn-${appStateSettings["autoBackups"]}"),
+            enableBorderRadius: true,
+            syncWithInitialValue: true,
+            initialValue: hasSignedIn && (appStateSettings["autoBackups"] == true),
+            title: "Daily Automatic Backup",
+            description: hasSignedIn
+                ? "Back up data to Google Drive daily automatically (keeps last 10)"
+                : "Sign in to Google to enable automatic daily Drive backups",
+            icon: appStateSettings["outlinedIcons"]
+                ? Icons.event_repeat_outlined
+                : Icons.event_repeat_rounded,
+            onSwitched: (val) async {
+              if (!hasSignedIn) {
+                final bool ok = await signInAndSync(
+                  context,
+                  next: () {},
+                  showErrorPopup: true,
+                );
+                if (!ok || appStateSettings["hasSignedIn"] != true) {
+                  if (mounted) setState(() {});
+                  return false;
+                }
+              }
+              await updateSettings("autoBackups", val,
+                  pagesNeedingRefresh: [], updateGlobalState: false);
+              await syncDailyBackupWorkManager();
+              if (mounted) setState(() {});
+              return true;
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }

@@ -486,9 +486,10 @@ class _SignInWithGoogleFlyInState extends State<SignInWithGoogleFlyIn> {
                     ),
                     child: Tappable(
                       onTap: () async {
-                        await signInGoogle();
-                        setState(() {
-                          hide = true;
+                        await signInAndSync(context, next: () {
+                          setState(() {
+                            hide = true;
+                          });
                         });
                       },
                       borderRadius: 13,
@@ -562,9 +563,10 @@ class _SignInWithGoogleFlyInState extends State<SignInWithGoogleFlyIn> {
                             child: Button(
                               label: "Continue with Google",
                               onTap: () async {
-                                await signInGoogle();
-                                setState(() {
-                                  hide = true;
+                                await signInAndSync(context, next: () {
+                                  setState(() {
+                                    hide = true;
+                                  });
                                 });
                               },
                               color: Theme.of(context).colorScheme.primary,

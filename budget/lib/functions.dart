@@ -1187,6 +1187,7 @@ Future<bool> openUrl(String link) async {
 }
 
 List<String> popularCurrencies = [
+  'pkr', // Pakistani Rupee
   'usd', // United States Dollar
   'eur', // Euro
   'jpy', // Japanese Yen

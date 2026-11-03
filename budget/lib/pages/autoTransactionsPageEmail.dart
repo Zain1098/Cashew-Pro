@@ -35,12 +35,13 @@ import 'addButton.dart';
 StreamSubscription<ServiceNotificationEvent>? notificationListenerSubscription;
 List<String> recentCapturedNotifications = [];
 
-Future initNotificationScanning() async {
+Future initNotificationScanning({bool requestIfNotGranted = false}) async {
   if (getPlatform(ignoreEmulation: true) != PlatformOS.isAndroid) return;
   notificationListenerSubscription?.cancel();
   if (appStateSettings["notificationScanning"] != true) return;
 
-  bool status = await requestReadNotificationPermission();
+  bool status = await requestReadNotificationPermission(
+      requestIfNotGranted: requestIfNotGranted);
 
   if (status == true) {
     notificationListenerSubscription =
@@ -48,9 +49,10 @@ Future initNotificationScanning() async {
   }
 }
 
-Future<bool> requestReadNotificationPermission() async {
+Future<bool> requestReadNotificationPermission(
+    {bool requestIfNotGranted = false}) async {
   bool status = await NotificationListenerService.isPermissionGranted();
-  if (status != true) {
+  if (status != true && requestIfNotGranted) {
     status = await NotificationListenerService.requestPermission();
   }
   return status;
@@ -216,7 +218,8 @@ class _AutoTransactionsPageNotificationsState
             await updateSettings("notificationScanning", value,
                 updateGlobalState: false);
             if (value == true) {
-              bool status = await requestReadNotificationPermission();
+              bool status = await requestReadNotificationPermission(
+                  requestIfNotGranted: true);
               if (status == false) {
                 await updateSettings("notificationScanning", false,
                     updateGlobalState: false);

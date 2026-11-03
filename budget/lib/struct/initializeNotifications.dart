@@ -37,10 +37,13 @@ Future<String?> initializeNotifications() async {
 
   final NotificationAppLaunchDetails? notificationAppLaunchDetails =
       await flutterLocalNotificationsPlugin.getNotificationAppLaunchDetails();
-  NotificationResponse? payload =
-      notificationAppLaunchDetails?.notificationResponse;
-  String? response = await payload?.payload;
-  return response;
+  if (notificationAppLaunchDetails?.didNotificationLaunchApp ?? false) {
+    NotificationResponse? payload =
+        notificationAppLaunchDetails?.notificationResponse;
+    String? response = await payload?.payload;
+    return response;
+  }
+  return null;
 }
 
 onSelectNotification(NotificationResponse notificationResponse) async {
@@ -101,7 +104,7 @@ Future<bool> runNotificationPayLoads(context) async {
     );
     return true;
   }
-  notificationPayload = "";
+  notificationPayload = null;
   return false;
 }
 

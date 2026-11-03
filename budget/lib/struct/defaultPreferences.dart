@@ -16,7 +16,7 @@ import 'package:flutter/services.dart';
 Future<Map<String, dynamic>> getDefaultPreferences() async {
   return {
     "databaseJustImported": false,
-    "backupLimit": 20,
+    "backupLimit": 10,
     "backupSync": true,
     "syncEveryChange": kIsWeb,
     "devicesHaveBeenSynced": 1,
@@ -34,11 +34,11 @@ Future<Map<String, dynamic>> getDefaultPreferences() async {
     "widgetOpacity": 1,
     "widgetTheme": "system", //system, light, dark
     "nonCompactTransactions":
-        false, //still in testing, declares a new transaction layout to show more information in lists
+        true, //still in testing, declares a new transaction layout to show more information in lists
     "fadeTransactionNameOverflows":
-        false, //still in testing, overflow transaction titles use fade instead of "..."
+        true, //still in testing, overflow transaction titles use fade instead of "..."
     "circularProgressRotation":
-        false, // still in testing, offsets the circular progress to align with pie chart sections
+        true, // still in testing, offsets the circular progress to align with pie chart sections
     "forceFullDarkBackground": false,
     // FullScreen is added if the section has its own preference when full screen (double column)
     "futureTransactionDaysHomePage": 4,
@@ -131,16 +131,16 @@ Future<Map<String, dynamic>> getDefaultPreferences() async {
     "netTotalsColorful": false,
     "EmailAutoTransactions-amountOfEmails": 10,
     "autoBackups": true,
-    "autoBackupsFrequency": 3, //in days
+    "autoBackupsFrequency": 1, //in days
     "hasSignedIn": false,
     "lastBackup": DateTime.now().subtract(Duration(days: 1)).toString(),
     "lastLoginVersion": "",
     "numLogins": 0,
     "enableGoogleLoginFlyIn": false,
-    "openedStoreRating": false,
-    "dismissedStoreRating": false,
-    "submittedFeedback": false,
-    "canShowBackupReminderPopup": true,
+    "openedStoreRating": true,
+    "dismissedStoreRating": true,
+    "submittedFeedback": true,
+    "canShowBackupReminderPopup": false,
     "canShowTransactionActionButtonTip": true,
     "autoLoginDisabledOnWebTip": true,
     "forceAutoLogin": false,
@@ -149,7 +149,7 @@ Future<Map<String, dynamic>> getDefaultPreferences() async {
     "notificationHour": 20,
     "notificationMinute": 0,
     "notificationsUpcomingTransactions": true,
-    "notificationsReminderType": ReminderNotificationType.IfAppNotOpened.index,
+    "notificationsReminderType": ReminderNotificationType.Everyday.index,
     "appOpenedHour": DateTime.now().hour,
     "appOpenedMinute": DateTime.now().minute,
     "materialYou": supportsSystemColor(),
@@ -193,7 +193,7 @@ Future<Map<String, dynamic>> getDefaultPreferences() async {
     "locale": "System", // the locale code or "System"
     "firstDayOfWeek": -1, // -1: Locale/System, 0: Sunday, 1: Monday,
     "disableShadows": false,
-    "showBillSplitterShortcut": false,
+    "showBillSplitterShortcut": true,
     "showTransactionPk": false,
     "showMethodAdded": false,
     "showBackupLimit": false,
@@ -202,7 +202,7 @@ Future<Map<String, dynamic>> getDefaultPreferences() async {
     "premiumPopupAddTransactionLastShown": DateTime.now().toString(),
     "premiumPopupFreeSeen": false,
     "previewDemo": false,
-    "purchaseID": null,
+    "purchaseID": "cashew.pro.lifetime",
     "showAccountLabelTagInTransactionEntry": false,
     "showCurrencyLabel": false,
     "showTransactionsMonthlySpendingSummary": true,

@@ -3,6 +3,7 @@ import 'package:budget/functions.dart';
 import 'package:budget/pages/addWalletPage.dart';
 import 'package:budget/pages/homePage/homePageWalletSwitcher.dart';
 import 'package:budget/pages/transactionFilters.dart';
+import 'package:budget/struct/currencyFunctions.dart';
 import 'package:budget/struct/settings.dart';
 import 'package:budget/widgets/animatedExpanded.dart';
 import 'package:budget/widgets/fadeIn.dart';
@@ -21,6 +22,28 @@ import 'package:budget/colors.dart';
 import 'package:provider/provider.dart';
 import 'package:budget/widgets/countNumber.dart';
 
+String? formatWalletUpcomingSummary(
+  BuildContext context,
+  WalletWithDetails walletWithDetails,
+) {
+  final int count = walletWithDetails.upcomingCount ?? 0;
+  if (count <= 0) return null;
+  final double amount = walletWithDetails.upcomingAmount ?? 0;
+  final AllWallets allWallets = Provider.of<AllWallets>(context);
+  final String formattedAmount = (amount > 0 ? "+" : "") +
+      convertToMoney(
+        allWallets,
+        amount,
+        currencyKey: walletWithDetails.wallet.currency,
+        decimals: walletWithDetails.wallet.decimals,
+        addCurrencyName: allWallets.allContainSameCurrency() == false,
+      );
+  final DateTime? nextDate = walletWithDetails.nextUpcomingDate;
+  final String dateSuffix =
+      nextDate != null ? " (${DateFormat('d MMM').format(nextDate)})" : "";
+  return "${"upcoming".tr()}: $formattedAmount$dateSuffix";
+}
+
 class WalletEntry extends StatelessWidget {
   const WalletEntry(
       {super.key, required this.walletWithDetails, required this.selected});
@@ -29,6 +52,8 @@ class WalletEntry extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String? upcomingText =
+        formatWalletUpcomingSummary(context, walletWithDetails);
     return Container(
       padding: const EdgeInsetsDirectional.only(start: 6, end: 6),
       decoration: BoxDecoration(
@@ -97,16 +122,31 @@ class WalletEntry extends StatelessWidget {
                           ),
                           TextFont(
                             textAlign: TextAlign.start,
-                            text: walletWithDetails.numberTransactions
+                            text: (walletWithDetails.numberTransactions ?? 0)
                                     .toString() +
                                 " " +
-                                (walletWithDetails.numberTransactions == 1
+                                ((walletWithDetails.numberTransactions ?? 0) ==
+                                        1
                                     ? "transaction".tr().toLowerCase()
                                     : "transactions".tr().toLowerCase()),
                             fontSize: 14,
                             textColor:
                                 getColor(context, "black").withOpacity(0.65),
                           ),
+                          if (upcomingText != null)
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(top: 2),
+                              child: TextFont(
+                                textAlign: TextAlign.start,
+                                text: upcomingText,
+                                fontSize: 12,
+                                maxLines: 1,
+                                textColor: Theme.of(context)
+                                    .colorScheme
+                                    .primary
+                                    .withOpacity(0.85),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -154,6 +194,9 @@ class WalletEntryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String? upcomingText = isCurrencyRow
+        ? null
+        : formatWalletUpcomingSummary(context, walletWithDetails);
     return OpenContainerNavigation(
       borderRadius: 0,
       openPage: isCurrencyRow
@@ -230,38 +273,60 @@ class WalletEntryRow extends StatelessWidget {
                               end: 17,
                               start: 10,
                             ),
-                            child: TextFont(
-                              textAlign: TextAlign.start,
-                              text: "",
-                              maxLines: 1,
-                              richTextSpan: [
-                                TextSpan(
-                                  text: isCurrencyRow
-                                      ? (walletWithDetails.wallet.currency ??
-                                              "")
-                                          .toString()
-                                          .allCaps
-                                      : walletWithDetails.wallet.name,
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    color: getColor(context, "black"),
-                                    fontFamily: appStateSettings["font"],
-                                    fontFamilyFallback: ['Inter'],
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                TextFont(
+                                  textAlign: TextAlign.start,
+                                  text: "",
+                                  maxLines: 1,
+                                  richTextSpan: [
+                                    TextSpan(
+                                      text: isCurrencyRow
+                                          ? (walletWithDetails
+                                                      .wallet.currency ??
+                                                  "")
+                                              .toString()
+                                              .allCaps
+                                          : walletWithDetails.wallet.name,
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        color: getColor(context, "black"),
+                                        fontFamily: appStateSettings["font"],
+                                        fontFamilyFallback: ['Inter'],
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    if (percent != null)
+                                      TextSpan(
+                                        text: "  " +
+                                            "(" +
+                                            convertToPercent(percent ?? 0,
+                                                useLessThanZero: true) +
+                                            ")",
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          color: getColor(context, "textLight"),
+                                          fontFamily: appStateSettings["font"],
+                                          fontFamilyFallback: ['Inter'],
+                                        ),
+                                      ),
+                                  ],
                                 ),
-                                if (percent != null)
-                                  TextSpan(
-                                    text: "  " +
-                                        "(" +
-                                        convertToPercent(percent ?? 0,
-                                            useLessThanZero: true) +
-                                        ")",
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      color: getColor(context, "textLight"),
-                                      fontFamily: appStateSettings["font"],
-                                      fontFamilyFallback: ['Inter'],
+                                if (upcomingText != null)
+                                  Padding(
+                                    padding:
+                                        const EdgeInsetsDirectional.only(top: 2),
+                                    child: TextFont(
+                                      textAlign: TextAlign.start,
+                                      text: upcomingText,
+                                      fontSize: 12,
+                                      maxLines: 1,
+                                      textColor: Theme.of(context)
+                                          .colorScheme
+                                          .primary
+                                          .withOpacity(0.85),
                                     ),
                                   ),
                               ],
@@ -362,11 +427,11 @@ class AmountAccount extends StatelessWidget {
                   ),
           ),
         CountNumber(
-          lazyFirstRender: false,
+          lazyFirstRender: true,
           count: finalTotal,
           duration: Duration(milliseconds: 1000),
           decimals: walletWithDetails.wallet.decimals,
-          initialCount: 0,
+          initialCount: finalTotal,
           textBuilder: (number) {
             return TextFont(
               textAlign: textAlign,

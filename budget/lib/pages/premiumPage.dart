@@ -26,8 +26,8 @@ import 'package:sa3_liquid/sa3_liquid.dart';
 import 'package:budget/widgets/openContainerNavigation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
-bool premiumPopupEnabled = kIsWeb == false;
-bool tryStoreEnabled = kIsWeb == false && kDebugMode == false;
+bool premiumPopupEnabled = false;
+bool tryStoreEnabled = false;
 StreamSubscription<List<PurchaseDetails>>? purchaseListener;
 Map<String, ProductDetails> storeProducts = {};
 Map<String, String> productIDs = {
@@ -622,6 +622,7 @@ void listenToPurchaseUpdated({
 
 Future<Map<String, ProductDetails>> initializeStoreAndPurchases(
     {required BuildContext context, required bool popRouteWithPurchase}) async {
+  if (appStateSettings["purchaseID"] == null) { updateSettings("purchaseID", productIDs["lifetime"], updateGlobalState: false); }
   if (tryStoreEnabled == true) {
     print("Loading Store");
     final bool available = await InAppPurchase.instance.isAvailable();

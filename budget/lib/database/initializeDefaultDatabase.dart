@@ -13,6 +13,9 @@ Future<bool> initializeDefaultDatabase() async {
     await createDefaultCategories();
   }
 
+  // Repair invalid Pakistani default category icon filenames from earlier builds
+  await repairBrokenDefaultCategoryIcons();
+
   if ((await database.getAllWallets()).length <= 0) {
     await database.createOrUpdateWallet(
       defaultWallet(),
@@ -20,6 +23,34 @@ Future<bool> initializeDefaultDatabase() async {
     );
   }
   return true;
+}
+
+Future<void> repairBrokenDefaultCategoryIcons() async {
+  const Map<String, String> iconRepairs = {
+    'home.png': 'rent.png',
+    'savings.png': 'piggy-bank.png',
+    'education.png': 'graduation.png',
+  };
+  for (final entry in iconRepairs.entries) {
+    await database.customStatement(
+      'UPDATE categories SET icon_name = ? WHERE icon_name = ?',
+      [entry.value, entry.key],
+    );
+  }
+
+  // Update specific utility categories from generic bills.png to distinct icons if untouched
+  const Map<String, String> utilityIconRepairs = {
+    'Bijli Bill': 'lightning-bolt.png',
+    'Gas Bill': 'gas-valve.png',
+    'Pani': 'water-tap.png',
+    'Mobile Load / Package': 'smartphone.png',
+  };
+  for (final entry in utilityIconRepairs.entries) {
+    await database.customStatement(
+      'UPDATE categories SET icon_name = ? WHERE name = ? AND icon_name = ?',
+      [entry.value, entry.key, 'bills.png'],
+    );
+  }
 }
 
 Future<bool> createDefaultCategories() async {

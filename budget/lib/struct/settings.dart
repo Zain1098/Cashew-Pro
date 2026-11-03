@@ -13,6 +13,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:budget/struct/databaseGlobal.dart';
 import 'package:budget/struct/defaultPreferences.dart';
 import 'package:budget/widgets/navigationFramework.dart';
+import 'package:budget/widgets/notificationsSettings.dart';
 import 'package:budget/colors.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -54,6 +55,8 @@ Future<bool> initializeSettings() async {
       // Always reset the language/locale when restoring a backup
       userSettings["locale"] = "System";
       userSettings["databaseJustImported"] = false;
+      userSettings["hasSignedIn"] = true;
+      userSettings["autoBackups"] = true;
       print("Settings were restored");
     } catch (e) {
       print("Error restoring imported settings " + e.toString());
@@ -86,6 +89,17 @@ Future<bool> initializeSettings() async {
 
   await attemptToMigrateSetLongTermLoansAmountTo0();
   attemptToMigrateCustomNumberFormattingSettings();
+
+  if (sharedPreferences.getBool("migratedProBuild3Defaults") != true) {
+    appStateSettings["autoBackupsFrequency"] = 1;
+    appStateSettings["notificationsReminderType"] =
+        ReminderNotificationType.Everyday.index;
+    if (appStateSettings["backupLimit"] == null ||
+        appStateSettings["backupLimit"] == 100) {
+      appStateSettings["backupLimit"] = 10;
+    }
+    await sharedPreferences.setBool("migratedProBuild3Defaults", true);
+  }
 
   // Disable sync every change is not on web
   // It will still sync when user pulls down to refresh
@@ -265,23 +279,26 @@ String languageDisplayFilter(String languageKey) {
 
 void openLanguagePicker(BuildContext context) {
   print(appStateSettings["locale"]);
+  final List<String> prioritizedKeys = [
+    "System",
+    if (supportedLocales.containsKey("en")) "en",
+    if (supportedLocales.containsKey("ur")) "ur",
+    for (final String localeKey in supportedLocales.keys)
+      if (localeKey != "en" && localeKey != "ur") localeKey,
+  ];
   openBottomSheet(
     context,
     PopupFramework(
       title: "language".tr(),
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsetsDirectional.only(bottom: 10),
-            child: TranslationsHelp(),
-          ),
           RadioItems(
-            items: [
-              "System",
-              for (String localeKey in supportedLocales.keys) localeKey,
-            ],
+            items: prioritizedKeys,
             initial: appStateSettings["locale"].toString(),
-            displayFilter: languageDisplayFilter,
+            displayFilter: (String key) {
+              if (key == "ur") return "اردو (Urdu)";
+              return languageDisplayFilter(key);
+            },
             onChanged: (value) async {
               // Need to update this value first because our RootBundleAssetLoaderCustomLocaleLoader
               // makes use of this value for some languages

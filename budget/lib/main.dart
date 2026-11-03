@@ -1,40 +1,60 @@
+import 'package:budget/colors.dart';
+import 'package:budget/database/tables.dart';
 import 'package:budget/functions.dart';
 import 'package:budget/pages/accountsPage.dart';
 import 'package:budget/pages/autoTransactionsPageEmail.dart';
 import 'package:budget/struct/currencyFunctions.dart';
+import 'package:budget/struct/customDelayedCurve.dart';
+import 'package:budget/struct/databaseGlobal.dart';
+import 'package:budget/struct/headlessBackup.dart';
 import 'package:budget/struct/iconObjects.dart';
-import 'package:budget/struct/keyboardIntents.dart';
-import 'package:budget/struct/logging.dart';
-import 'package:budget/widgets/fadeIn.dart';
-import 'package:budget/struct/languageMap.dart';
 import 'package:budget/struct/initializeBiometrics.dart';
+import 'package:budget/struct/initializeNotifications.dart';
+import 'package:budget/struct/keyboardIntents.dart';
+import 'package:budget/struct/languageMap.dart';
+import 'package:budget/struct/logging.dart';
+import 'package:budget/struct/notificationsGlobal.dart';
+import 'package:budget/struct/scrollBehaviorOverride.dart';
+import 'package:budget/struct/settings.dart';
+import 'package:budget/widgets/accountAndBackup.dart';
+import 'package:budget/widgets/fadeIn.dart';
+import 'package:budget/widgets/globalLoadingProgress.dart';
+import 'package:budget/widgets/globalSnackbar.dart';
+import 'package:budget/widgets/navigationFramework.dart';
+import 'package:budget/widgets/navigationSidebar.dart';
+import 'package:budget/widgets/restartApp.dart';
 import 'package:budget/widgets/util/appLinks.dart';
 import 'package:budget/widgets/util/onAppResume.dart';
 import 'package:budget/widgets/util/watchForDayChange.dart';
 import 'package:budget/widgets/watchAllWallets.dart';
-import 'package:budget/database/tables.dart';
-import 'package:budget/struct/databaseGlobal.dart';
-import 'package:budget/struct/settings.dart';
-import 'package:budget/struct/notificationsGlobal.dart';
-import 'package:budget/widgets/navigationSidebar.dart';
-import 'package:budget/widgets/globalLoadingProgress.dart';
-import 'package:budget/struct/scrollBehaviorOverride.dart';
-import 'package:budget/widgets/globalSnackbar.dart';
-import 'package:budget/struct/initializeNotifications.dart';
-import 'package:budget/widgets/navigationFramework.dart';
-import 'package:budget/widgets/restartApp.dart';
-import 'package:budget/struct/customDelayedCurve.dart';
+import 'package:device_preview/device_preview.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:budget/colors.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:device_preview/device_preview.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
-import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:workmanager/workmanager.dart';
 import 'firebase_options.dart';
-import 'package:easy_localization/easy_localization.dart';
+
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    WidgetsFlutterBinding.ensureInitialized();
+    try {
+      await runHeadlessDriveBackup();
+      return true;
+    } catch (e, st) {
+      debugPrint('[HeadlessBackup] Task "$task" failed: $e\n$st');
+      try {
+        await recordBackupFailure(e.toString());
+      } catch (_) {}
+      return false;
+    }
+  });
+}
 
 // Requires hot restart when changed
 bool enableDevicePreview = false && kDebugMode;
@@ -55,6 +75,15 @@ void main() async {
     await loadCurrencyJSON();
     await loadLanguageNamesJSON();
     await initializeSettings();
+
+    if (!kIsWeb && getPlatform() == PlatformOS.isAndroid) {
+      try {
+        await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+        await syncDailyBackupWorkManager();
+      } catch (e) {
+        print("WorkManager init error: $e");
+      }
+    }
     tz.initializeTimeZones();
     final String? locationName = await FlutterTimezone.getLocalTimezone();
     tz.setLocalLocation(tz.getLocation(locationName ?? "America/New_York"));
@@ -149,7 +178,21 @@ class App extends StatelessWidget {
         Widget mainWidget = OnAppResume(
           updateGlobalAppLifecycleState: true,
           onAppResume: () async {
+            try {
+              await sharedPreferences.reload();
+              final String? lastSuccess =
+                  sharedPreferences.getString(kLastSuccessfulDriveBackupKey);
+              if (lastSuccess != null && lastSuccess.isNotEmpty) {
+                appStateSettings["lastBackup"] = lastSuccess;
+              }
+            } catch (e) {
+              print("Error reloading shared preferences on resume: $e");
+            }
             await setHighRefreshRate();
+            await createBackupInBackground(navigatorKey.currentContext);
+          },
+          onAppPaused: () async {
+            await triggerBackupOnPauseIfDue();
           },
           child: InitializeBiometrics(
             child: InitializeNotificationService(

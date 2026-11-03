@@ -38,8 +38,8 @@ Future saveDBFileToDevice({
 
 Future exportDB({required BuildContext boxContext}) async {
   await openLoadingPopupTryCatch(() async {
-    String fileName =
-        "cashew-" + cleanFileNameString(DateTime.now().toString()) + ".sql";
+    final String datePart = DateFormat('yyyy-MM-dd-HHmmss').format(DateTime.now());
+    final String fileName = "cashew-backup-$datePart.sqlite";
     await saveDBFileToDevice(boxContext: boxContext, fileName: fileName);
   });
 }

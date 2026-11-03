@@ -144,16 +144,16 @@ Future updateWidgetColorsAndText(BuildContext context) async {
       colorToHex(widgetTheme.colorScheme.onSecondaryContainer),
     );
     await HomeWidget.updateWidget(
-      name: 'NetWorthWidgetProvider',
+      name: 'NetWorthWidgetProvider', qualifiedAndroidName: 'com.budget.tracker_app.NetWorthWidgetProvider',
     );
     await HomeWidget.updateWidget(
-      name: 'NetWorthPlusWidgetProvider',
+      name: 'NetWorthPlusWidgetProvider', qualifiedAndroidName: 'com.budget.tracker_app.NetWorthPlusWidgetProvider',
     );
     await HomeWidget.updateWidget(
-      name: 'PlusWidgetProvider',
+      name: 'PlusWidgetProvider', qualifiedAndroidName: 'com.budget.tracker_app.PlusWidgetProvider',
     );
     await HomeWidget.updateWidget(
-      name: 'TransferWidgetProvider',
+      name: 'TransferWidgetProvider', qualifiedAndroidName: 'com.budget.tracker_app.TransferWidgetProvider',
     );
   });
 
@@ -213,10 +213,10 @@ class RenderHomePageWidgetsState extends State<RenderHomePageWidgets> {
                   netWorthTransactionsNumber,
                 );
                 await HomeWidget.updateWidget(
-                  name: 'NetWorthWidgetProvider',
+                  name: 'NetWorthWidgetProvider', qualifiedAndroidName: 'com.budget.tracker_app.NetWorthWidgetProvider',
                 );
                 await HomeWidget.updateWidget(
-                  name: 'NetWorthPlusWidgetProvider',
+                  name: 'NetWorthPlusWidgetProvider', qualifiedAndroidName: 'com.budget.tracker_app.NetWorthPlusWidgetProvider',
                 );
               });
 

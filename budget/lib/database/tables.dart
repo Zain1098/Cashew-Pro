@@ -584,10 +584,16 @@ class WalletWithDetails {
   final TransactionWallet wallet;
   final double? totalSpent;
   final int? numberTransactions;
+  final double? upcomingAmount;
+  final int? upcomingCount;
+  final DateTime? nextUpcomingDate;
   WalletWithDetails({
     required this.wallet,
     this.totalSpent,
     this.numberTransactions,
+    this.upcomingAmount,
+    this.upcomingCount,
+    this.nextUpcomingDate,
   });
 }
 
@@ -1879,6 +1885,21 @@ class FinanceDatabase extends _$FinanceDatabase {
     return query.get();
   }
 
+  static DateTime balanceCutoff() {
+    final DateTime now = DateTime.now();
+    return DateTime(now.year, now.month, now.day + 1);
+  }
+
+  Expression<bool> onlyUpToToday($TransactionsTable tbl) {
+    return tbl.dateCreated.isSmallerThanValue(balanceCutoff());
+  }
+
+  static const CustomExpression<DateTime> _sqlNow =
+      CustomExpression<DateTime>("CAST(strftime('%s', 'now') AS INTEGER)");
+  static const CustomExpression<DateTime> _sqlNowPlus1000Days =
+      CustomExpression<DateTime>(
+          "CAST(strftime('%s', 'now', '+1000 days') AS INTEGER)");
+
   Stream<List<Transaction>> watchAllUpcomingTransactions(String? searchString,
       {int? limit, DateTime? startDate, DateTime? endDate, bool? isIncome}) {
     final query = select(transactions)
@@ -1887,10 +1908,12 @@ class FinanceDatabase extends _$FinanceDatabase {
           onlyShowBasedOnIncome(transactions, isIncome) &
           transactions.skipPaid.equals(false) &
           transactions.paid.equals(false) &
-          transactions.dateCreated
-              .isBiggerThanValue(startDate ?? DateTime.now()) &
-          transactions.dateCreated.isSmallerThanValue(
-              endDate ?? DateTime.now().add(Duration(days: 1000))) &
+          (startDate != null
+              ? transactions.dateCreated.isBiggerThanValue(startDate)
+              : transactions.dateCreated.isBiggerThan(_sqlNow)) &
+          (endDate != null
+              ? transactions.dateCreated.isSmallerThanValue(endDate)
+              : transactions.dateCreated.isSmallerThan(_sqlNowPlus1000Days)) &
           (transactions.type.equals(TransactionSpecialType.subscription.index) |
               transactions.type
                   .equals(TransactionSpecialType.repetitive.index) |
@@ -1922,9 +1945,8 @@ class FinanceDatabase extends _$FinanceDatabase {
           (isOverdueTransactions == null
               ? Constant(true)
               : isOverdueTransactions == true
-                  ? transactions.dateCreated.isSmallerThanValue(DateTime.now())
-                  : transactions.dateCreated
-                      .isBiggerThanValue(DateTime.now())) &
+                  ? transactions.dateCreated.isSmallerThan(_sqlNow)
+                  : transactions.dateCreated.isBiggerThan(_sqlNow)) &
           (transactions.type.equals(TransactionSpecialType.subscription.index) |
               transactions.type
                   .equals(TransactionSpecialType.repetitive.index) |
@@ -2407,9 +2429,31 @@ class FinanceDatabase extends _$FinanceDatabase {
       HomePageWidgetDisplay? homePageWidgetDisplay,
       bool mergeLikeCurrencies = false}) {
     JoinedSelectStatement<HasResultSet, dynamic> query;
-    final totalCount = transactions.transactionPk.count();
-    final totalSpent =
-        transactions.amount.sum(filter: transactions.paid.equals(true));
+    final DateTime cutoff = balanceCutoff();
+    final int cutoffEpoch = cutoff.millisecondsSinceEpoch ~/ 1000;
+    // Only count and sum paid transactions up to end of today (start of tomorrow local)
+    // so new same-day transactions update immediately while future-dated items are excluded.
+    final Expression<bool> paidUpToToday = transactions.paid.equals(true) &
+        transactions.dateCreated.isSmallerThanValue(cutoff);
+    final Expression<bool> upcomingFilter =
+        transactions.dateCreated.isBiggerOrEqualValue(cutoff) |
+            (transactions.paid.equals(false) &
+                transactions.skipPaid.equals(false) &
+                (transactions.type.equals(
+                        TransactionSpecialType.subscription.index) |
+                    transactions.type.equals(
+                        TransactionSpecialType.repetitive.index) |
+                    transactions.type
+                        .equals(TransactionSpecialType.upcoming.index)));
+    final totalCount =
+        transactions.transactionPk.count(filter: paidUpToToday);
+    final totalSpent = transactions.amount.sum(filter: paidUpToToday);
+    final upcomingCount =
+        transactions.transactionPk.count(filter: upcomingFilter);
+    final upcomingAmount = transactions.amount.sum(filter: upcomingFilter);
+    final nextUpcomingEpoch = CustomExpression<int>(
+      'MIN(CASE WHEN ("transactions"."date_created" >= $cutoffEpoch OR ("transactions"."skip_paid" = 0 AND "transactions"."paid" = 0 AND "transactions"."type" IN (${TransactionSpecialType.upcoming.index}, ${TransactionSpecialType.subscription.index}, ${TransactionSpecialType.repetitive.index}))) THEN "transactions"."date_created" END)',
+    );
     query = (select(wallets)
           ..where((w) => ((homePageWidgetDisplay != null
                   ? w.homePageWidgetDisplay
@@ -2435,13 +2479,25 @@ class FinanceDatabase extends _$FinanceDatabase {
       //                 ? "WalletsList"
       //                 : ""))
       ..groupBy(mergeLikeCurrencies ? [wallets.currency] : [wallets.walletPk])
-      ..addColumns([totalCount, totalSpent]);
+      ..addColumns([
+        totalCount,
+        totalSpent,
+        upcomingCount,
+        upcomingAmount,
+        nextUpcomingEpoch,
+      ]);
 
     return query.watch().map((rows) => rows.map((row) {
+          final int? nextEpoch = row.read(nextUpcomingEpoch);
           return WalletWithDetails(
             wallet: row.readTable(wallets),
             numberTransactions: row.read(totalCount),
             totalSpent: row.read(totalSpent),
+            upcomingCount: row.read(upcomingCount),
+            upcomingAmount: row.read(upcomingAmount),
+            nextUpcomingDate: nextEpoch != null
+                ? DateTime.fromMillisecondsSinceEpoch(nextEpoch * 1000)
+                : null,
           );
         }).toList());
   }
@@ -4344,10 +4400,11 @@ class FinanceDatabase extends _$FinanceDatabase {
           ..where((c) => ((mainCategoryPks == null
                   ? onlyShowMainCategoryListing(c)
                   : c.mainCategoryPk.isIn(mainCategoryPks)) &
+              (c.categoryPk.equals("0").not()) &
               (selectedIncome == true
-                  ? c.income.equals(true) & c.categoryPk.equals("0").not()
+                  ? c.income.equals(true)
                   : selectedIncome == false
-                      ? c.income.equals(false) & c.categoryPk.equals("0").not()
+                      ? c.income.equals(false)
                       : Constant(true)) &
               (searchFor == null
                   ? Constant(true)
@@ -6719,7 +6776,13 @@ class FinanceDatabase extends _$FinanceDatabase {
     bool includeBalanceCorrection = false,
     bool onlyIncomeAndExpense = false, //Remove loan and balance corrections
     bool useAbsoluteSum = false,
+    bool includeFutureTransactions = false,
   }) {
+    // Exclude future-dated transactions from current balance views unless an explicit date range filter is active.
+    final bool hasExplicitDateFilter =
+        includeFutureTransactions ||
+            forcedDateTimeRange != null ||
+            searchFilters?.dateTimeRange != null;
     // we have to convert currencies to account for all wallets
     List<Stream<TotalWithCount?>> mergedStreams = [];
     for (TransactionWallet wallet in allWallets.list) {
@@ -6728,7 +6791,8 @@ class FinanceDatabase extends _$FinanceDatabase {
               .abs()
               .sum(filter: transactions.paid.equals(true))
           : transactions.amount.sum(filter: transactions.paid.equals(true));
-      final totalCount = transactions.transactionPk.count();
+      final totalCount =
+          transactions.transactionPk.count(filter: transactions.paid.equals(true));
       final query = selectOnly(transactions)
         ..addColumns([totalAmt, totalCount])
         ..where(onlyShowIfFollowsSearchFilters(
@@ -6741,6 +6805,9 @@ class FinanceDatabase extends _$FinanceDatabase {
               joinedWithObjectiveLoans: null,
             ) &
             transactions.walletFk.equals(wallet.walletPk) &
+            (hasExplicitDateFilter
+                ? Constant(true)
+                : onlyUpToToday(transactions)) &
             (onlyShowIfNotBalanceCorrection(transactions, isIncome) |
                 Constant(includeBalanceCorrection)) &
             onlyShowIfOnlyExpenseAndIncome(transactions, onlyIncomeAndExpense) &
@@ -6768,6 +6835,7 @@ class FinanceDatabase extends _$FinanceDatabase {
     String walletPk, {
     bool? isIncome = null,
     DateTime? startDate,
+    bool upToToday = true,
   }) {
     final totalAmt =
         transactions.amount.sum(filter: transactions.paid.equals(true));
@@ -6776,6 +6844,7 @@ class FinanceDatabase extends _$FinanceDatabase {
       ..where((startDate == null
               ? Constant(true)
               : transactions.dateCreated.isBiggerThanValue(startDate)) &
+          (upToToday ? onlyUpToToday(transactions) : Constant(true)) &
           (isIncome == null
               ? Constant(true)
               : isIncome == true
@@ -6837,10 +6906,8 @@ class FinanceDatabase extends _$FinanceDatabase {
             (isOverdueTransactions == null
                 ? Constant(true)
                 : isOverdueTransactions == true
-                    ? transactions.dateCreated
-                        .isSmallerThanValue(DateTime.now())
-                    : transactions.dateCreated
-                        .isBiggerThanValue(DateTime.now())) &
+                    ? transactions.dateCreated.isSmallerThan(_sqlNow)
+                    : transactions.dateCreated.isBiggerThan(_sqlNow)) &
             (transactions.type
                     .equals(TransactionSpecialType.subscription.index) |
                 transactions.type
@@ -7055,12 +7122,49 @@ class FinanceDatabase extends _$FinanceDatabase {
     DateTimeRange? forcedDateTimeRange,
     bool followCustomPeriodCycle = false,
     String? cycleSettingsExtension = "",
+    bool? isTransferFilter,
   }) {
     List<Stream<TotalWithCount?>> mergedStreams = [];
     for (TransactionWallet wallet in allWallets.list) {
       final totalAmt = transactions.amount.sum();
       final totalCount = transactions.transactionPk.count();
       final $CategoriesTable subCategories = alias(categories, 'subCategories');
+      Expression<bool> whereClause = onlyShowIfFollowsSearchFilters(
+            transactions,
+            searchFilters,
+            joinedWithSubcategoriesTable: null,
+            joinedWithCategories: false,
+            joinedWithBudgets: false,
+            joinedWithObjectives: false,
+            joinedWithObjectiveLoans: null,
+          ) &
+          (cycleSettingsExtension == null
+              ? Constant(true)
+              : onlyShowIfFollowCustomPeriodCycle(
+                  transactions,
+                  followCustomPeriodCycle,
+                  cycleSettingsExtension: cycleSettingsExtension,
+                  forcedDateTimeRange: forcedDateTimeRange,
+                )) &
+          transactions.paid.equals(true) &
+          transactions.walletFk.equals(wallet.walletPk);
+
+      if (isTransferFilter == true) {
+        whereClause = whereClause &
+            (transactions.pairedTransactionFk.isNotNull() |
+                transactions.note.like("% → %") |
+                transactions.note.like("% ← %") |
+                transactions.note.like("%Transferred Balance%") |
+                transactions.note.like("%منتقل شدہ بیلنس%"));
+      } else if (isTransferFilter == false) {
+        whereClause = whereClause &
+            (transactions.pairedTransactionFk.isNull() &
+                transactions.note.like("% → %").not() &
+                transactions.note.like("% ← %").not() &
+                transactions.note.like("%Transferred Balance%").not() &
+                transactions.note.like("%منتقل شدہ بیلنس%").not());
+      }
+
       final query = selectOnly(transactions)
         ..addColumns([totalAmt, totalCount])
         ..join([
@@ -7071,25 +7175,7 @@ class FinanceDatabase extends _$FinanceDatabase {
           leftOuterJoin(objectives,
               objectives.objectivePk.equalsExp(transactions.objectiveLoanFk)),
         ])
-        ..where(onlyShowIfFollowsSearchFilters(
-              transactions,
-              searchFilters,
-              joinedWithSubcategoriesTable: null,
-              joinedWithCategories: false,
-              joinedWithBudgets: false,
-              joinedWithObjectives: false,
-              joinedWithObjectiveLoans: null,
-            ) &
-            (cycleSettingsExtension == null
-                ? Constant(true)
-                : onlyShowIfFollowCustomPeriodCycle(
-                    transactions,
-                    followCustomPeriodCycle,
-                    cycleSettingsExtension: cycleSettingsExtension,
-                    forcedDateTimeRange: forcedDateTimeRange,
-                  )) &
-            transactions.paid.equals(true) &
-            transactions.walletFk.equals(wallet.walletPk));
+        ..where(whereClause);
       mergedStreams.add(query.map((row) {
         // print(row.rawData.data);
         return TotalWithCount(

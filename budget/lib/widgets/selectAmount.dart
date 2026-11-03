@@ -340,9 +340,8 @@ class _SelectAmountState extends State<SelectAmount> {
         amount = amount.substring(0, amount.length - 1) + input;
       });
     } else if (amount.length <= 0 && input == "-") {
-      setState(() {
-        amount = "-";
-      });
+      // Disallow leading minus sign so expense amounts are not entered negative
+      return;
     }
     widget.setSelectedAmount(
         (amount == ""

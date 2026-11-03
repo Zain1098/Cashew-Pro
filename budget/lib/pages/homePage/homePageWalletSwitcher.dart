@@ -15,6 +15,7 @@ import 'package:budget/widgets/openBottomSheet.dart';
 import 'package:budget/widgets/openPopup.dart';
 import 'package:budget/widgets/selectItems.dart';
 import 'package:budget/widgets/walletEntry.dart';
+import 'package:budget/widgets/util/shimmerPlaceholder.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
@@ -95,7 +96,11 @@ class HomePageWalletSwitcher extends StatelessWidget {
                 padding: EdgeInsetsDirectional.symmetric(horizontal: 7),
               );
             }
-            return Container();
+            return const ShimmerPlaceholder(
+              height: 82,
+              borderRadius: 15,
+              margin: EdgeInsetsDirectional.symmetric(horizontal: 13),
+            );
           },
         ),
       ),

@@ -1428,7 +1428,7 @@
   "lkr": {
     "Currency": "Rupee",
     "Code": "LKR",
-    "Symbol": "₨",
+    "Symbol": "Rs",
     "CountryName": "Sri Lanka",
     "CountryCode": "LK"
   },
@@ -1667,7 +1667,7 @@
   "mur": {
     "Currency": "Rupee",
     "Code": "MUR",
-    "Symbol": "₨",
+    "Symbol": "Rs",
     "CountryName": "Mauritius",
     "CountryCode": "MU"
   },
@@ -1803,7 +1803,7 @@
   "npr": {
     "Currency": "Rupee",
     "Code": "NPR",
-    "Symbol": "₨",
+    "Symbol": "Rs",
     "CountryName": "Nepal",
     "CountryCode": "NP"
   },
@@ -1930,7 +1930,7 @@
   "pkr": {
     "Currency": "Rupee",
     "Code": "PKR",
-    "Symbol": "₨",
+    "Symbol": "Rs",
     "CountryName": "Pakistan",
     "CountryCode": "PK"
   },
@@ -2186,7 +2186,7 @@
   "scr": {
     "Currency": "Rupee",
     "Code": "SCR",
-    "Symbol": "₨",
+    "Symbol": "Rs",
     "CountryName": "Seychelles",
     "CountryCode": "SC"
   },

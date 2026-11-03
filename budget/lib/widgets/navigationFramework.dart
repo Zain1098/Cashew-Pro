@@ -416,7 +416,8 @@ class PageNavigationFrameworkState extends State<PageNavigationFramework> {
       bool isDatabaseCorruptedPopupShown = openDatabaseCorruptedPopup(context);
       if (isDatabaseCorruptedPopupShown) return;
 
-      await initializeNotificationsPlatform();
+      await initializeNotificationsPlatform(
+          request: appStateSettings["notifications"] == true);
 
       bool isChangelogShown = showChangelog(context);
       bool isRatingPopupShown = false;

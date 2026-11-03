@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:budget/colors.dart';
 import 'package:budget/database/tables.dart';
 import 'package:budget/functions.dart';
+import 'package:budget/struct/currencyFunctions.dart';
 import 'package:budget/pages/addTransactionPage.dart';
+import 'package:budget/pages/addWalletPage.dart';
 import 'package:budget/struct/databaseGlobal.dart';
 import 'package:budget/struct/settings.dart';
 import 'package:budget/widgets/animatedExpanded.dart';
@@ -66,8 +68,23 @@ class _ImportCSVState extends State<ImportCSV> {
         } else {
           File file = File(result.files.single.path ?? "");
           Uint8List fileBytes = await file.readAsBytes();
-          DecodingResult decoded = await CharsetDetector.autoDecode(fileBytes);
-          csvString = decoded.string;
+          if (fileBytes.length >= 3 &&
+              fileBytes[0] == 0xEF &&
+              fileBytes[1] == 0xBB &&
+              fileBytes[2] == 0xBF) {
+            csvString = utf8.decode(fileBytes.sublist(3), allowMalformed: true);
+          } else {
+            try {
+              csvString = utf8.decode(fileBytes);
+            } catch (_) {
+              DecodingResult decoded =
+                  await CharsetDetector.autoDecode(fileBytes);
+              csvString = decoded.string;
+            }
+          }
+          csvString = csvString.trimLeft().startsWith('\uFEFF')
+              ? csvString.trimLeft().substring(1)
+              : csvString;
         }
         // print(csvString);
         return csvString;
@@ -104,6 +121,10 @@ class _ImportCSVState extends State<ImportCSV> {
   Future<void> _assignColumns(String csvString,
       {bool importFromSheets = false}) async {
     try {
+      if (csvString.startsWith('\uFEFF')) {
+        csvString = csvString.substring(1);
+      }
+      csvString = csvString.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
       List<List<String>> fileContents = CsvToListConverter().convert(
         csvString,
         eol: '\n',
@@ -909,9 +930,29 @@ class _ImportingEntriesPopupState extends State<ImportingEntriesPopup> {
     }
 
     String categoryFk = "0";
+    final String rawCategoryName =
+        row[assignedColumns["category"]!["setHeaderIndex"]].toString().trim();
+    final String lowerCategoryName = rawCategoryName.toLowerCase();
+    final bool isSystemBalanceOrTransfer = lowerCategoryName == "transfer" ||
+        lowerCategoryName == "balance correction" ||
+        lowerCategoryName == "account amount balancing" ||
+        lowerCategoryName ==
+            "default-category-account-amount-balancing".tr().toLowerCase() ||
+        lowerCategoryName == "transferred-balance".tr().toLowerCase();
+    if (lowerCategoryName == "transfer" &&
+        !note.startsWith("transferred-balance".tr()) &&
+        !note.toLowerCase().startsWith("transferred balance")) {
+      note = note.isEmpty
+          ? "transferred-balance".tr()
+          : ("transferred-balance".tr() + "\n" + note);
+    }
+    TransactionCategory? preResolvedCategory = isSystemBalanceOrTransfer
+        ? await initializeBalanceCorrectionCategory()
+        : null;
     TransactionCategory selectedCategory;
     try {
-      selectedCategory = await database.getCategoryInstanceGivenName(
+      selectedCategory = preResolvedCategory ??
+          await database.getCategoryInstanceGivenName(
           row[assignedColumns["category"]!["setHeaderIndex"]]
               .toString()
               .trim());
@@ -957,7 +998,8 @@ class _ImportingEntriesPopupState extends State<ImportingEntriesPopup> {
             methodAdded: MethodAdded.csv,
           ),
         );
-        selectedCategory = await database.getCategoryInstanceGivenName(
+        selectedCategory = preResolvedCategory ??
+          await database.getCategoryInstanceGivenName(
             row[assignedColumns["category"]!["setHeaderIndex"]]
                 .toString()
                 .trim());
@@ -996,6 +1038,24 @@ class _ImportingEntriesPopupState extends State<ImportingEntriesPopup> {
           try {
             int numberOfWallets =
                 (await database.getTotalCountOfWallets())[0] ?? 0;
+            String? csvCurrencyCode;
+            final int hdrIdx =
+                _findListIndexWithMultipleNonEmptyStrings(widget.fileContents) ??
+                    0;
+            if (hdrIdx < widget.fileContents.length) {
+              final List<String> hdrs = widget.fileContents[hdrIdx];
+              final int curCol = hdrs.indexWhere(
+                  (h) => h.trim().toLowerCase() == "currency");
+              if (curCol >= 0 && curCol < row.length) {
+                final String rawCur = row[curCol].trim().toLowerCase();
+                if (rawCur == "rs" || rawCur == "pkr" || rawCur == "\u20a8") {
+                  csvCurrencyCode = "pkr";
+                } else if (rawCur.isNotEmpty &&
+                    currenciesJSON.containsKey(rawCur)) {
+                  csvCurrencyCode = rawCur;
+                }
+              }
+            }
             await database.createOrUpdateWallet(
               insert: true,
               Provider.of<AllWallets>(context, listen: false)
@@ -1008,6 +1068,9 @@ class _ImportingEntriesPopupState extends State<ImportingEntriesPopup> {
                     dateCreated: DateTime.now(),
                     dateTimeModified: Value(DateTime.now()),
                     order: numberOfWallets,
+                    currency: csvCurrencyCode != null
+                        ? Value(csvCurrencyCode)
+                        : const Value.absent(),
                   ),
             );
             walletFk = (await database.getWalletInstanceGivenName(
@@ -1093,7 +1156,7 @@ class _ImportingEntriesPopupState extends State<ImportingEntriesPopup> {
         skipPaid: false,
         methodAdded: MethodAdded.csv,
       ),
-      name == ""
+      (name == "" || mainCategoryFk == "0")
           ? null
           : TransactionAssociatedTitle(
               associatedTitlePk: "-1",

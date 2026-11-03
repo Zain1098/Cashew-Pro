@@ -860,28 +860,27 @@ class WalletDetailsPageState extends State<WalletDetailsPage>
                             onlyIncomeAndExpense: true,
                           ),
                         ),
-                        StreamBuilder<TransactionCategory?>(
-                            stream: database.watchBalanceCorrectionCategory(),
-                            builder: (context, snapshot) {
-                              TransactionCategory? category = snapshot.data;
-                              SearchFilters rowFilters =
-                                  (searchFilters ?? SearchFilters()).copyWith(
-                                categoryPks: ["0"],
-                                dateTimeRange:
-                                    getDateTimeRangeForPassedSearchFilters(
-                                        cycleSettingsExtension: "",
-                                        selectedDateTimeRange:
-                                            selectedDateTimeRange),
-                                walletPks: walletPks,
-                                objectiveLoanPks: [null],
-                              );
-                              return AmountSpentEntryRow(
-                                hide: category == null,
+                        Builder(builder: (context) {
+                          SearchFilters rowFilters =
+                              (searchFilters ?? SearchFilters()).copyWith(
+                            categoryPks: ["0"],
+                            dateTimeRange:
+                                getDateTimeRangeForPassedSearchFilters(
+                                    cycleSettingsExtension: "",
+                                    selectedDateTimeRange:
+                                        selectedDateTimeRange),
+                            walletPks: walletPks,
+                            objectiveLoanPks: [null],
+                          );
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              AmountSpentEntryRow(
                                 openPage: TransactionsSearchPage(
                                   initialFilters: rowFilters,
                                 ),
                                 textColor: getColor(context, "black"),
-                                label: category?.name ?? "",
+                                label: "transfer".tr().capitalizeFirstofEach,
                                 absolute: false,
                                 totalWithCountStream: database
                                     .watchTotalCountOfTransactionsWithSearchFilters(
@@ -891,9 +890,36 @@ class WalletDetailsPageState extends State<WalletDetailsPage>
                                   cycleSettingsExtension: "",
                                   searchFilters: rowFilters,
                                   forcedDateTimeRange: selectedDateTimeRange,
+                                  isTransferFilter: true,
                                 ),
-                              );
-                            }),
+                              ),
+                              StreamBuilder<TransactionCategory?>(
+                                  stream: database.watchBalanceCorrectionCategory(),
+                                  builder: (context, snapshot) {
+                                    TransactionCategory? category = snapshot.data;
+                                    return AmountSpentEntryRow(
+                                      hide: category == null,
+                                      openPage: TransactionsSearchPage(
+                                        initialFilters: rowFilters,
+                                      ),
+                                      textColor: getColor(context, "black"),
+                                      label: category?.name ?? "",
+                                      absolute: false,
+                                      totalWithCountStream: database
+                                          .watchTotalCountOfTransactionsWithSearchFilters(
+                                        allWallets: Provider.of<AllWallets>(context),
+                                        followCustomPeriodCycle:
+                                            widget.wallet == null,
+                                        cycleSettingsExtension: "",
+                                        searchFilters: rowFilters,
+                                        forcedDateTimeRange: selectedDateTimeRange,
+                                        isTransferFilter: false,
+                                      ),
+                                    );
+                                  }),
+                            ],
+                          );
+                        }),
                         AmountSpentEntryRow(
                           openPage: widget.wallet == null &&
                                   searchFilters?.isClear() == true &&

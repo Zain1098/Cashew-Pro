@@ -15,6 +15,7 @@ import 'package:budget/widgets/openBottomSheet.dart';
 import 'package:budget/widgets/outlinedButtonStacked.dart';
 import 'package:budget/widgets/periodCyclePicker.dart';
 import 'package:budget/widgets/transactionsAmountBox.dart';
+import 'package:budget/widgets/util/shimmerPlaceholder.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -107,7 +108,11 @@ class HomePageNetWorth extends StatelessWidget {
                 ),
               );
             }
-            return SizedBox.shrink();
+            return const ShimmerPlaceholder(
+              height: 98,
+              borderRadius: 15,
+              margin: EdgeInsetsDirectional.only(bottom: 13, start: 13, end: 13),
+            );
           }),
     );
   }

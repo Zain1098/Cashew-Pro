@@ -70,7 +70,7 @@ class _DailyNotificationsSettingsState
             await updateSettings("notifications", value,
                 updateGlobalState: false);
             if (value == true) {
-              await initializeNotificationsPlatform();
+              await initializeNotificationsPlatform(request: true);
               await setDailyNotifications(context);
             } else {
               await cancelDailyNotification();
@@ -119,6 +119,9 @@ class _DailyNotificationsSettingsState
                             setState(() {
                               selectedReminderType = option;
                             });
+                            await setDailyNotifications(context);
+                            if (mounted) setState(() {
+                            });
                             popRoute(context);
                           },
                         ),
@@ -155,7 +158,7 @@ class _DailyNotificationsSettingsState
                           pagesNeedingRefresh: [],
                           updateGlobalState: false,
                         );
-                        await initializeNotificationsPlatform();
+                        await initializeNotificationsPlatform(request: true);
                         await setDailyNotifications(context);
                       }
                     },
@@ -198,7 +201,7 @@ class _UpcomingTransactionsNotificationsSettingsState
             updateSettings("notificationsUpcomingTransactions", value,
                 updateGlobalState: false);
             if (value == true) {
-              await initializeNotificationsPlatform();
+              await initializeNotificationsPlatform(request: true);
               await scheduleUpcomingTransactionsNotification(context);
             } else {
               await cancelUpcomingTransactionsNotification();
@@ -283,7 +286,7 @@ class _UpcomingTransactionsNotificationsSettingsState
                                           transaction.copyWith(
                                               upcomingTransactionNotification:
                                                   Value(value)));
-                                      await initializeNotificationsPlatform();
+                                      await initializeNotificationsPlatform(request: true);
                                       await scheduleUpcomingTransactionsNotification(
                                           context);
                                       return;
@@ -349,6 +352,9 @@ Future<bool> scheduleDailyNotification(
     tz.TZDateTime dateTime = _nextInstanceOfSetTime(timeOfDay, dayOffset: i);
     if (scheduleNowDebug)
       dateTime = tz.TZDateTime.now(tz.local).add(Duration(seconds: i * 5));
+    if (dateTime.isBefore(tz.TZDateTime.now(tz.local))) {
+      continue;
+    }
     NotificationDetails notificationDetails = NotificationDetails(
       android: androidNotificationDetails,
       iOS: darwinNotificationDetails,
@@ -363,7 +369,7 @@ Future<bool> scheduleDailyNotification(
       payload: 'addTransaction',
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents: DateTimeComponents.dateAndTime,
+
 
       // If exact time was used, need USE_EXACT_ALARM and SCHEDULE_EXACT_ALARM permissions
       // which are only meant for calendar/reminder based applications
@@ -486,24 +492,22 @@ Future<bool> cancelUpcomingTransactionsNotification() async {
 
 tz.TZDateTime _nextInstanceOfSetTime(TimeOfDay timeOfDay, {int dayOffset = 0}) {
   final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
-  // tz.TZDateTime scheduledDate = tz.TZDateTime(
-  //     tz.local, now.year, now.month, now.day, timeOfDay.hour, timeOfDay.minute);
-  // if (scheduledDate.isBefore(now)) {
-  //   scheduledDate = scheduledDate.add(const Duration(days: 1));
-  // }
 
-  // add one to current day (if app wasn't opened, it will notify)
   tz.TZDateTime scheduledDate = tz.TZDateTime(tz.local, now.year, now.month,
       now.day + dayOffset, timeOfDay.hour, timeOfDay.minute);
+
+  if (scheduledDate.isBefore(now) || scheduledDate.isAtSameMomentAs(now)) {
+    scheduledDate = scheduledDate.add(const Duration(days: 1));
+  }
 
   return scheduledDate;
 }
 
-Future<bool> initializeNotificationsPlatform() async {
+Future<bool> initializeNotificationsPlatform({bool request = false}) async {
   if (kIsWeb || Platform.isLinux) {
     return false;
   }
-  bool result = await checkNotificationsPermissionAll();
+  bool result = await checkNotificationsPermissionAll(request: request);
   if (result) {
     print("Notifications initialized");
     return true;
@@ -512,32 +516,49 @@ Future<bool> initializeNotificationsPlatform() async {
   }
 }
 
-Future<bool> checkNotificationsPermissionIOS() async {
-  bool? result = await flutterLocalNotificationsPlugin
-      .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin>()
-      ?.requestPermissions(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-  if (result != true) return false;
-  return true;
+Future<bool> checkNotificationsPermissionIOS({bool request = false}) async {
+  if (request) {
+    bool? result = await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>()
+        ?.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+    if (result != true) return false;
+    return true;
+  } else {
+    final status = await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>()
+        ?.checkPermissions();
+    return status?.isEnabled ?? false;
+  }
 }
 
-Future<bool> checkNotificationsPermissionAndroid() async {
-  bool? result = await flutterLocalNotificationsPlugin
-      .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>()
-      ?.requestNotificationsPermission();
-  if (result != true) return false;
-  return true;
+Future<bool> checkNotificationsPermissionAndroid({bool request = false}) async {
+  if (request) {
+    bool? result = await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
+    if (result != true) return false;
+    return true;
+  } else {
+    bool? result = await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.areNotificationsEnabled();
+    if (result != true) return false;
+    return true;
+  }
 }
 
-Future<bool> checkNotificationsPermissionAll() async {
+Future<bool> checkNotificationsPermissionAll({bool request = false}) async {
   try {
-    if (Platform.isAndroid) return await checkNotificationsPermissionAndroid();
-    if (Platform.isIOS) return await checkNotificationsPermissionIOS();
+    if (Platform.isAndroid) return await checkNotificationsPermissionAndroid(request: request);
+    if (Platform.isIOS) return await checkNotificationsPermissionIOS(request: request);
   } catch (e) {
     print("Error setting up notifications: " + e.toString());
     return false;

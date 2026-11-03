@@ -8,6 +8,7 @@ import 'package:budget/widgets/textWidgets.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:budget/widgets/countNumber.dart';
+import 'package:budget/widgets/util/shimmerPlaceholder.dart';
 import 'package:provider/provider.dart';
 
 // If you just added an upcoming transaction and mark it as paid, it will not show up here
@@ -77,14 +78,20 @@ class TransactionsAmountBox extends StatelessWidget {
                       totalWithCountStream: totalWithCountStream,
                       totalWithCountStream2: totalWithCountStream2,
                       builder: (context, snapshot) {
+                        if (snapshot.hasData == false || snapshot.data == null) {
+                          return Column(
+                            children: const [
+                              ShimmerPlaceholder(width: 105, height: 24, borderRadius: 6),
+                              SizedBox(height: 6),
+                              ShimmerPlaceholder(width: 72, height: 14, borderRadius: 4),
+                            ],
+                          );
+                        }
                         double totalSpent = snapshot.data?.total ?? 0;
                         int totalCount = snapshot.data?.count ?? 0;
-                        double finalAmount = snapshot.hasData == false ||
-                                snapshot.data == null
-                            ? 0
-                            : absolute == true
-                                ? (totalSpent).abs()
-                                : totalSpent * (invertSign == true ? -1 : 1);
+                        double finalAmount = absolute == true
+                            ? (totalSpent).abs()
+                            : totalSpent * (invertSign == true ? -1 : 1);
                         return Column(
                           children: [
                             CountNumber(

@@ -7,6 +7,8 @@ import 'package:budget/struct/languageMap.dart';
 import 'package:budget/struct/settings.dart';
 import 'package:budget/widgets/accountAndBackup.dart';
 import 'package:budget/widgets/button.dart';
+import 'package:budget/widgets/globalSnackbar.dart';
+import 'package:budget/widgets/openSnackbar.dart';
 import 'package:budget/widgets/currencyPicker.dart';
 import 'package:budget/widgets/framework/popupFramework.dart';
 import 'package:budget/widgets/linearGradientFadedEdges.dart';
@@ -258,7 +260,56 @@ class OnBoardingPageBodyState extends State<OnBoardingPageBody> {
               maxLines: 5,
             ),
           ),
-          SizedBox(height: 55),
+          SizedBox(height: 25),
+          Padding(
+            padding: const EdgeInsetsDirectional.symmetric(horizontal: 25),
+            child: LowKeyButton(
+              onTap: () async {
+                Future<void> attemptOnboardingRestore() async {
+                  bool loaderOpen = false;
+                  try {
+                    openLoadingPopup(context);
+                    loaderOpen = true;
+                    final bool signedIn = await signInGoogle(
+                      context: context,
+                      silentSignIn: false,
+                      waitForCompletion: false,
+                    );
+                    if (loaderOpen && context.mounted) {
+                      popRoute(context);
+                      loaderOpen = false;
+                    }
+                    if (signedIn && context.mounted) {
+                      await chooseBackup(context);
+                    }
+                  } catch (e) {
+                    if (loaderOpen && context.mounted) {
+                      popRoute(context);
+                      loaderOpen = false;
+                    }
+                    if (context.mounted) {
+                      await showSignInErrorPopup(
+                        context,
+                        lastSignInError ?? e,
+                        cancelLabel: "Skip",
+                        onRetry: () {
+                          attemptOnboardingRestore();
+                        },
+                      );
+                    }
+                  }
+                }
+
+                await attemptOnboardingRestore();
+              },
+              text: "Restore from Google Drive",
+              extraWidget: Padding(
+                padding: const EdgeInsetsDirectional.only(end: 8),
+                child: Icon(MoreIcons.google_drive, size: 20),
+              ),
+            ),
+          ),
+          SizedBox(height: 30),
         ],
         bottomWidget: widget.showPreviewDemoButton
             ? PreviewDemoButton(
@@ -527,6 +578,13 @@ class OnBoardingPageBodyState extends State<OnBoardingPageBody> {
                         print("Error signing in: " + e.toString());
                         loadingIndeterminateKey.currentState
                             ?.setVisibility(false);
+                        if (context.mounted) {
+                          showSignInErrorPopup(
+                            context,
+                            e,
+                            cancelLabel: "skip".tr().capitalizeFirst,
+                          );
+                        }
                       },
                     );
                   },

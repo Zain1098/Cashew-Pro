@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:budget/database/generatePreviewData.dart';
 import 'package:budget/database/tables.dart';
 import 'package:budget/functions.dart';
@@ -391,6 +392,79 @@ class _AddTransactionPageState extends State<AddTransactionPage>
   bool lockAddTransaction = false;
   Future<bool> addTransaction() async {
     if (lockAddTransaction) return false;
+    double checkAmt = (selectedAmount ?? 0).abs();
+    final bool amountChanged = widget.transaction == null ||
+        (widget.transaction!.amount.abs() - checkAmt).abs() > 0.005;
+    if (amountChanged && (checkAmt > 100000 || (selectedCategory != null && checkAmt >= 10000))) {
+      double avg90DayCat = 0;
+      int recentPaidCount = 0;
+      if (selectedCategory != null) {
+        final DateTime ninetyDaysAgo =
+            DateTime.now().subtract(const Duration(days: 90));
+        final List<Transaction> catTxns = await database
+            .getAllTransactionsFromCategory(selectedCategory!.categoryPk);
+        final List<Transaction> recentPaid = catTxns
+            .where((t) =>
+                t.paid &&
+                t.dateCreated.isAfter(ninetyDaysAgo) &&
+                (widget.transaction == null ||
+                    t.transactionPk != widget.transaction!.transactionPk))
+            .toList();
+        recentPaidCount = recentPaid.length;
+        if (recentPaid.isNotEmpty) {
+          avg90DayCat = recentPaid.fold<double>(
+                  0.0, (sum, t) => sum + t.amount.abs()) /
+              recentPaid.length;
+        }
+      }
+      double maxMonthlyBudget = 0;
+      final List<Budget> budgets = await database.getAllBudgets();
+      for (final Budget b in budgets) {
+        if (b.archived || b.income) continue;
+        final int period = b.periodLength <= 0 ? 1 : b.periodLength;
+        double monthlyEq = b.amount.abs();
+        if (b.reoccurrence == BudgetReoccurence.daily) {
+          monthlyEq = b.amount.abs() * (30.0 / period);
+        } else if (b.reoccurrence == BudgetReoccurence.weekly) {
+          monthlyEq = b.amount.abs() * (4.333 / period);
+        } else if (b.reoccurrence == BudgetReoccurence.monthly) {
+          monthlyEq = b.amount.abs() / period;
+        } else if (b.reoccurrence == BudgetReoccurence.yearly) {
+          monthlyEq = b.amount.abs() / (12.0 * period);
+        }
+        if (monthlyEq > maxMonthlyBudget) {
+          maxMonthlyBudget = monthlyEq;
+        }
+      }
+      final double largeThreshold = math.max(
+        100000.0,
+        math.max(10.0 * avg90DayCat, 2.0 * maxMonthlyBudget),
+      );
+      final bool triggersCategoryMultiplier = recentPaidCount >= 5 &&
+          avg90DayCat > 0 &&
+          checkAmt >= 8.0 * avg90DayCat;
+      if ((checkAmt > largeThreshold || triggersCategoryMultiplier) && mounted) {
+        final TransactionWallet? wallet = getSelectedWallet(listen: false);
+        dynamic confirm = await openPopup(
+          context,
+          title: "Large Amount Warning",
+          description: "Are you sure you want to save a transaction of " +
+              convertToMoney(
+                Provider.of<AllWallets>(context, listen: false),
+                checkAmt,
+                currencyKey: wallet?.currency,
+                decimals: wallet?.decimals,
+              ) +
+              "?",
+          icon: Icons.warning_amber_rounded,
+          onSubmitLabel: "confirm".tr().capitalizeFirst,
+          onSubmit: () => popRoute(context, true),
+          onCancelLabel: "cancel".tr().capitalizeFirst,
+          onCancel: () => popRoute(context, false),
+        );
+        if (confirm != true) return false;
+      }
+    }
     lockAddTransaction = true;
 
     bool result = await addTransactionLocked();
@@ -631,7 +705,7 @@ class _AddTransactionPageState extends State<AddTransactionPage>
         : selectedType == null;
     bool skipPaid = widget.transaction != null
         ? widget.transaction!.skipPaid
-        : selectedType == null;
+        : false;
 
     if (selectedType != null &&
         widget.transaction != null &&
@@ -653,9 +727,9 @@ class _AddTransactionPageState extends State<AddTransactionPage>
           widget.transaction != null ? widget.transaction!.transactionPk : "-1",
       pairedTransactionFk: widget.transaction?.pairedTransactionFk,
       name: (selectedTitle ?? "").trim(),
-      amount: (selectedIncome || selectedAmount == 0 //Prevent negative 0
+      amount: double.parse(((selectedIncome || selectedAmount == 0
           ? (selectedAmount ?? 0).abs()
-          : (selectedAmount ?? 0).abs() * -1),
+          : (selectedAmount ?? 0).abs() * -1)).toStringAsFixed(2)),
       note: _noteInputController.text,
       categoryFk: selectedCategory?.categoryPk ?? "-1",
       subCategoryFk: selectedSubCategory?.categoryPk,
@@ -938,9 +1012,11 @@ class _AddTransactionPageState extends State<AddTransactionPage>
         mainAndSubcategory.ignoredSubcategorySelection == false) {
       selectAmountPopup(
         next: () async {
-          await addTransaction();
-          popRoute(context);
-          popRoute(context);
+          bool result = await addTransaction();
+          if (result) {
+            popRoute(context);
+            popRoute(context);
+          }
         },
         nextLabel: textAddTransaction,
       );
@@ -1627,16 +1703,20 @@ class _AddTransactionPageState extends State<AddTransactionPage>
                                       label: "duplicate".tr(),
                                       onTap: () async {
                                         bool result = await addTransaction();
-                                        if (result) popRoute(context);
-                                        duplicateTransaction(context,
-                                            widget.transaction!.transactionPk);
+                                        if (result) {
+                                          popRoute(context);
+                                          duplicateTransaction(context,
+                                              widget.transaction!.transactionPk);
+                                        }
                                       },
                                       onLongPress: () async {
                                         bool result = await addTransaction();
-                                        if (result) popRoute(context);
-                                        duplicateTransaction(context,
-                                            widget.transaction!.transactionPk,
-                                            useCurrentDate: true);
+                                        if (result) {
+                                          popRoute(context);
+                                          duplicateTransaction(context,
+                                              widget.transaction!.transactionPk,
+                                              useCurrentDate: true);
+                                        }
                                       },
                                       color: Theme.of(context)
                                           .colorScheme

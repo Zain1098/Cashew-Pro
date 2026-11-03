@@ -166,6 +166,16 @@ class _AddWalletPageState extends State<AddWalletPage> {
           : HexColor(widget.wallet!.colour);
       selectedCurrency = widget.wallet!.currency ?? "usd";
       selectedDecimals = widget.wallet!.decimals;
+    } else {
+      // Default to primary wallet's currency (e.g. PKR if chosen at onboarding)
+      try {
+        final allWallets = Provider.of<AllWallets>(context, listen: false);
+        String? primaryCurrency =
+            allWallets.indexedByPk[appStateSettings["selectedWalletPk"]]?.currency;
+        if (primaryCurrency != null && primaryCurrency.isNotEmpty) {
+          selectedCurrency = primaryCurrency;
+        }
+      } catch (_) {}
     }
     populateCurrencies();
     Future.delayed(Duration.zero, () async {

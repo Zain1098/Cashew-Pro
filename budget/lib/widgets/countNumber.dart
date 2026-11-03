@@ -151,7 +151,7 @@ class _CountNumberState extends State<CountNumber> {
       }
     }
 
-    if (lazyFirstRender && widget.initialCount == widget.count) {
+    if (lazyFirstRender) { previousAmount = widget.count;
       lazyFirstRender = false;
       return widget.textBuilder(
         double.parse((widget.count).toStringAsFixed(decimals)),

@@ -11,6 +11,7 @@ import 'package:budget/widgets/tappable.dart';
 import 'package:budget/widgets/util/keepAliveClientMixin.dart';
 import 'package:budget/widgets/openBottomSheet.dart';
 import 'package:budget/widgets/walletEntry.dart';
+import 'package:budget/widgets/util/shimmerPlaceholder.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -99,7 +100,7 @@ class HomePageWalletList extends StatelessWidget {
                           ],
                         );
                       }
-                      return Container();
+                      return const ShimmerPlaceholder(height: 64, borderRadius: 15);
                     },
                   ),
                   if (appStateSettings["walletsListCurrencyBreakdown"] ==
@@ -166,7 +167,7 @@ class HomePageWalletList extends StatelessWidget {
                               ],
                             );
                           }
-                          return Container();
+                          return const ShimmerPlaceholder(height: 64, borderRadius: 15);
                         },
                       ),
                     ),

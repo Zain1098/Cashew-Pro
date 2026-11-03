@@ -2,7 +2,9 @@ import 'package:budget/database/tables.dart';
 import 'package:budget/functions.dart';
 import 'package:budget/struct/databaseGlobal.dart';
 import 'package:budget/struct/settings.dart';
+import 'package:budget/struct/transferHelpers.dart';
 import 'package:budget/widgets/textWidgets.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 
 class TransactionLabel extends StatelessWidget {
@@ -62,6 +64,15 @@ class TransactionCategoryNameLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (transaction.categoryFk == "0") {
+      return TextFont(
+        text: specialCategoryName(transaction),
+        fontSize: fontSize,
+        maxLines: appStateSettings["fadeTransactionNameOverflows"] == false ? null : 1,
+        overflow: appStateSettings["fadeTransactionNameOverflows"] == false ? null : TextOverflow.fade,
+        softWrap: appStateSettings["fadeTransactionNameOverflows"] == false ? null : false,
+      );
+    }
     return category == null
         ? StreamBuilder<TransactionCategory>(
             stream: database.getCategory(transaction.categoryFk).$1,

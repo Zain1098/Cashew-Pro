@@ -3,23 +3,99 @@ import 'dart:io';
 import 'package:budget/functions.dart';
 import 'package:budget/struct/settings.dart';
 import 'package:budget/widgets/globalSnackbar.dart';
+import 'package:budget/widgets/navigationFramework.dart';
+import 'package:budget/widgets/openPopup.dart';
 import 'package:budget/widgets/openSnackbar.dart';
 import 'package:easy_localization/easy_localization.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:universal_html/html.dart' show AnchorElement;
 
-// On Android -> Save file to device downloads -> Save file to folder -> Share file
-// On Web -> Download file via web
-// On iOS -> Share file
+const MethodChannel _nativeFilesChannel =
+    MethodChannel('com.budget.tracker_app/native_files');
+
+String _mimeTypeForFileName(String fileName) {
+  final String lower = fileName.toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.csv')) return 'text/csv';
+  if (lower.endsWith('.json')) return 'application/json';
+  return 'application/octet-stream';
+}
+
+String _trOrFallback(String key, String fallback) {
+  final String translated = key.tr();
+  return translated == key ? fallback : translated;
+}
+
+Future<void> showSavedFileDialog({
+  required BuildContext context,
+  required String displayName,
+  required String uri,
+  required String mimeType,
+  required Uint8List fileBytes,
+}) async {
+  await openPopup(
+    context,
+    icon: appStateSettings["outlinedIcons"]
+        ? Icons.download_done_outlined
+        : Icons.download_done_rounded,
+    title: "Saved: $displayName",
+    description: displayName,
+    onCancelLabel: _trOrFallback("close", "Close").capitalizeFirst,
+    onCancel: () {
+      popRoute(context);
+    },
+    onExtraLabel: _trOrFallback("share", "Share").capitalizeFirst,
+    onExtra: () async {
+      popRoute(context);
+      try {
+        await Share.shareXFiles(
+          [
+            XFile.fromData(
+              fileBytes,
+              name: displayName,
+              mimeType: mimeType,
+            ),
+          ],
+          subject: displayName,
+          fileNameOverrides: [displayName],
+        );
+      } catch (e) {
+        openSnackbar(SnackbarMessage(
+          title: _trOrFallback("an-error-occured", "Error"),
+          description: e.toString(),
+          icon: appStateSettings["outlinedIcons"]
+              ? Icons.warning_outlined
+              : Icons.warning_rounded,
+        ));
+      }
+    },
+    onSubmitLabel: _trOrFallback("open", "Open").capitalizeFirst,
+    onSubmit: () async {
+      popRoute(context);
+      try {
+        await _nativeFilesChannel.invokeMethod('openFile', {
+          'uri': uri,
+          'mimeType': mimeType,
+        });
+      } catch (e) {
+        openSnackbar(SnackbarMessage(
+          title: _trOrFallback("an-error-occured", "Unable to open file"),
+          description: e.toString(),
+          icon: appStateSettings["outlinedIcons"]
+              ? Icons.warning_outlined
+              : Icons.warning_rounded,
+        ));
+      }
+    },
+  );
+}
 
 Future<bool> saveFile({
-  // Wrap the caller in a builder and pass its context
   required BuildContext boxContext,
-  // One of dataStore or dataString
   required List<int>? dataStore,
   required String? dataString,
   required String fileName,
@@ -31,6 +107,7 @@ Future<bool> saveFile({
   if (dataStore == null && dataString == null) {
     throw ("Both arguments cannot be null");
   }
+
   if (kIsWeb) {
     try {
       String base64String = base64Encode(
@@ -61,131 +138,146 @@ Future<bool> saveFile({
     }
   }
 
+  final Uint8List fileBytes = dataStore != null
+      ? Uint8List.fromList(dataStore)
+      : Uint8List.fromList(utf8.encode(dataString!));
+  final String mimeType = _mimeTypeForFileName(fileName);
+
   if (shareFile || getPlatform() == PlatformOS.isIOS) {
     try {
-      int lastIndex = fileName.lastIndexOf('.');
-      String? fileExtension;
-      if (lastIndex != -1 && lastIndex < fileName.length - 1) {
-        fileExtension = fileName.substring(lastIndex + 1);
-      }
-      List<XFile> files = [];
-      if (dataStore != null) {
-        Uint8List convertedDataStore = Uint8List.fromList(dataStore);
-        files = [
-          XFile.fromData(
-            convertedDataStore,
-            name: fileName,
-            mimeType: fileExtension,
-          )
-        ];
-      } else if (dataString != null) {
-        Uint8List convertedDataString =
-            Uint8List.fromList(utf8.encode(dataString));
-        files = [
-          XFile.fromData(
-            convertedDataString,
-            name: fileName,
-            mimeType: fileExtension,
-          )
-        ];
-      }
+      final List<XFile> files = [
+        XFile.fromData(
+          fileBytes,
+          name: fileName,
+          mimeType: mimeType,
+        )
+      ];
 
-      final box = boxContext.findRenderObject() as RenderBox?;
-      if (box != null) {
-        ShareResult result = await Share.shareXFiles(
-          files,
-          subject: fileName,
-          sharePositionOrigin: box.localToGlobal(Offset.zero) & box.size,
-          fileNameOverrides: [fileName],
-        );
-        if (result.status != ShareResultStatus.success) {
-          throw ("No application selected");
-        }
-      } else {
-        throw ("Share sheet origin could not be found!");
+      final RenderBox? box = boxContext.mounted
+          ? boxContext.findRenderObject() as RenderBox?
+          : null;
+      final ShareResult result = await Share.shareXFiles(
+        files,
+        subject: fileName,
+        sharePositionOrigin:
+            box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+        fileNameOverrides: [fileName],
+      );
+      if (result.status == ShareResultStatus.dismissed) {
+        return false;
       }
 
       openSnackbar(SnackbarMessage(
-        title: successMessage.tr(),
+        title: successMessage,
         description: fileName,
         icon: appStateSettings["outlinedIcons"]
             ? Icons.download_done_outlined
             : Icons.download_done_rounded,
-        timeout: Duration(milliseconds: 5000),
+        timeout: const Duration(milliseconds: 5000),
       ));
       return true;
     } catch (e) {
       openSnackbar(SnackbarMessage(
-        title: errorMessage.tr(),
+        title: errorMessage,
         description: e.toString(),
         icon: appStateSettings["outlinedIcons"]
             ? Icons.warning_outlined
             : Icons.warning_rounded,
       ));
-      print("Error saving file to device: " + e.toString());
+      print("Error sharing file: " + e.toString());
+      return false;
+    }
+  }
+
+  if (getPlatform() == PlatformOS.isAndroid) {
+    try {
+      final Map<dynamic, dynamic>? response = await _nativeFilesChannel
+          .invokeMapMethod<dynamic, dynamic>('saveFile', {
+        'fileName': fileName,
+        'mimeType': mimeType,
+        'bytes': fileBytes,
+      });
+
+      if (response == null || response['cancelled'] == true) {
+        openSnackbar(SnackbarMessage(
+          title: "Nothing saved",
+          description: _trOrFallback("no-folder-selected", "Save cancelled"),
+          icon: appStateSettings["outlinedIcons"]
+              ? Icons.info_outlined
+              : Icons.info_outline_rounded,
+        ));
+        return false;
+      }
+
+      if (response['saved'] == true) {
+        final String savedUri = (response['uri'] ?? '').toString();
+        final String displayName =
+            (response['displayName'] ?? fileName).toString();
+        openSnackbar(SnackbarMessage(
+          title: successMessage,
+          description: "Saved: $displayName",
+          icon: appStateSettings["outlinedIcons"]
+              ? Icons.download_done_outlined
+              : Icons.download_done_rounded,
+          timeout: const Duration(milliseconds: 5000),
+        ));
+        Future.delayed(const Duration(milliseconds: 120), () {
+          final BuildContext? dialogCtx = navigatorKey.currentContext;
+          if (dialogCtx != null) {
+            showSavedFileDialog(
+              context: dialogCtx,
+              displayName: displayName,
+              uri: savedUri,
+              mimeType: mimeType,
+              fileBytes: fileBytes,
+            );
+          }
+        });
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print("Error saving file via native Android SAF: " + e.toString());
+      openSnackbar(SnackbarMessage(
+        title: errorMessage,
+        description: e.toString(),
+        icon: appStateSettings["outlinedIcons"]
+            ? Icons.warning_outlined
+            : Icons.warning_rounded,
+      ));
       return false;
     }
   }
 
   try {
-    String directory = customDirectory ??
-        (getPlatform() == PlatformOS.isAndroid
-            ? "/storage/emulated/0/Download"
-            : (await getApplicationDocumentsDirectory()).path);
-
-    String filePath = "${directory}/${fileName}";
-    File savedFile = File(filePath);
-    if (dataStore != null) {
-      await savedFile.writeAsBytes(dataStore);
-    } else if (dataString != null) {
-      await savedFile.writeAsString(dataString);
-    }
+    final String directory =
+        customDirectory ?? (await getApplicationDocumentsDirectory()).path;
+    final String filePath = "$directory/$fileName";
+    final File savedFile = File(filePath);
+    await savedFile.writeAsBytes(fileBytes);
 
     openSnackbar(SnackbarMessage(
-      title: successMessage.tr(),
-      description: filePath,
+      title: successMessage,
+      description: "Saved: $fileName",
       icon: appStateSettings["outlinedIcons"]
           ? Icons.download_done_outlined
           : Icons.download_done_rounded,
-      timeout: Duration(milliseconds: 5000),
+      timeout: const Duration(milliseconds: 5000),
+      onTap: () async {
+        await Share.shareXFiles([XFile(filePath, name: fileName)],
+            subject: fileName);
+      },
     ));
     return true;
   } catch (e) {
-    print("Error saving file to device: " + e.toString());
-    if (customDirectory == null) {
-      // Try again with selecting a custom directory
-      String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-      if (selectedDirectory == null) {
-        openSnackbar(SnackbarMessage(
-          title: errorMessage.tr(),
-          description: "no-folder-selected".tr(),
-          icon: appStateSettings["outlinedIcons"]
-              ? Icons.warning_outlined
-              : Icons.warning_rounded,
-        ));
-        print("No folder selected");
-        return false;
-      } else {
-        return await saveFile(
-          boxContext: boxContext,
-          dataStore: dataStore,
-          dataString: dataString,
-          fileName: fileName,
-          successMessage: successMessage,
-          errorMessage: errorMessage,
-          customDirectory: selectedDirectory,
-        );
-      }
-    } else {
-      return await saveFile(
-        boxContext: boxContext,
-        dataStore: dataStore,
-        dataString: dataString,
-        fileName: fileName,
-        successMessage: successMessage,
-        errorMessage: errorMessage,
-        shareFile: true,
-      );
-    }
+    print("Error saving file to desktop directory: " + e.toString());
+    openSnackbar(SnackbarMessage(
+      title: errorMessage,
+      description: e.toString(),
+      icon: appStateSettings["outlinedIcons"]
+          ? Icons.warning_outlined
+          : Icons.warning_rounded,
+    ));
+    return false;
   }
 }
